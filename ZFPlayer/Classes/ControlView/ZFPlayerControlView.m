@@ -648,7 +648,7 @@
 - (UIButton *)failBtn {
     if (!_failBtn) {
         _failBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        [_failBtn setTitle:@"加载失败,点击重试" forState:UIControlStateNormal];
+        [_failBtn setTitle:@"..." forState:UIControlStateNormal];
         [_failBtn addTarget:self action:@selector(failBtnClick:) forControlEvents:UIControlEventTouchUpInside];
         [_failBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         _failBtn.titleLabel.font = [UIFont systemFontOfSize:14.0];

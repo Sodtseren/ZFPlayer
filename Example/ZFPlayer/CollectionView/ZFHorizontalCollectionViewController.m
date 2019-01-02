@@ -219,7 +219,7 @@ static NSString * const reuseIdentifier = @"collectionViewCell";
 - (UILabel *)markLabel {
     if (!_markLabel) {
         _markLabel = [UILabel new];
-        _markLabel.text = @"请横向滚动";
+        _markLabel.text = @"<- ->";
     }
     return _markLabel;
 }
