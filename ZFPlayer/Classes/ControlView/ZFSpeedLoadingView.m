@@ -78,7 +78,7 @@
 
 - (void)networkSpeedChanged:(NSNotification *)sender {
     NSString *downloadSpped = [sender.userInfo objectForKey:ZFNetworkSpeedNotificationKey];
-    self.speedTextLabel.text = downloadSpped;
+    self.speedTextLabel.text = @"";//downloadSpped;
 }
 
 - (void)startAnimating {
