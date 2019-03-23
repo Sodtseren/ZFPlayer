@@ -29,12 +29,12 @@
 #if __has_include(<KSYMediaPlayer/KSYMediaPlayer.h>)
 #import <KSYMediaPlayer/KSYMediaPlayer.h>
 
-static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
+static float const kTimeRefreshInterval = 0.1;
 
-@interface KSMediaPlayerManager () {
-    ZFKVOController *_playerItemKVO;
-}
+@interface KSMediaPlayerManager ()
 @property (nonatomic, strong) KSYMoviePlayerController *player;
+@property (nonatomic, assign) BOOL isReadyToPlay;
+@property (nonatomic, strong) NSTimer *timer;
 
 @end
 
@@ -63,14 +63,14 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
 @synthesize isPreparedToPlay               = _isPreparedToPlay;
 @synthesize scalingMode                    = _scalingMode;
 @synthesize playerPlayFailed               = _playerPlayFailed;
+@synthesize presentationSizeChanged        = _presentationSizeChanged;
 
 - (void)dealloc {
-    [self destory];
+    [self stop];
 }
 
 - (void)destory {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [_playerItemKVO safelyRemoveAllObservers];
     _isPlaying = NO;
     _isPreparedToPlay = NO;
 }
@@ -89,7 +89,7 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
     self.loadState = ZFPlayerLoadStatePrepare;
     [self initializePlayer];
     if (self.playerPrepareToPlay) self.playerPrepareToPlay(self, self.assetURL);
-    [self.player prepareToPlay];
+    [self play];
 }
 
 - (void)play {
@@ -118,6 +118,9 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
     self->_currentTime = 0;
     self->_totalTime = 0;
     self->_bufferTime = 0;
+    self.isReadyToPlay = NO;
+    [self.timer invalidate];
+    self.timer = nil;
 }
 
 - (void)replay {
@@ -150,11 +153,14 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
 }
 
 - (void)initializePlayer {
+    if (self.player) [self.player stop];
     self.player = [[KSYMoviePlayerController alloc] initWithContentURL:_assetURL];
+    [self.player prepareToPlay];
     self.player.shouldAutoplay = YES;
     [self addPlayerNotification];
     
-    [self.view insertSubview:self.player.view atIndex:1];
+    [self.view insertSubview:self.player.view atIndex:2];
+    self.player.view.backgroundColor = [UIColor clearColor];
     self.player.view.frame = self.view.bounds;
     self.player.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.scalingMode = _scalingMode;
@@ -209,31 +215,29 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
                                              selector:@selector(suggestReloadChange:)
                                                  name:MPMoviePlayerSuggestReloadNotification
                                                object:self.player];
-    
-    [_playerItemKVO safelyRemoveAllObservers];
-    _playerItemKVO = [[ZFKVOController alloc] initWithTarget:_player];
-    [_playerItemKVO safelyAddObserver:self
-                           forKeyPath:kCurrentPlaybackTime
-                              options:NSKeyValueObservingOptionNew
-                              context:nil];
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if ([keyPath isEqualToString:kCurrentPlaybackTime]) {
-            self->_currentTime = self.player.currentPlaybackTime;
-            self->_totalTime = self.player.duration;
-            self->_bufferTime = self.player.playableDuration;
-            if (self.playerPlayTimeChanged) self.playerPlayTimeChanged(self, self->_currentTime, self->_totalTime);
-            if (self.playerBufferTimeChanged) self.playerBufferTimeChanged(self, self->_bufferTime);
-        }
-    });
+- (void)timerUpdate {
+    if (self.player.currentPlaybackTime > 0 && !self.isReadyToPlay) {
+        self.isReadyToPlay = YES;
+        self.loadState = ZFPlayerLoadStatePlaythroughOK;
+    }
+    self->_currentTime = self.player.currentPlaybackTime > 0 ? self.player.currentPlaybackTime : 0;
+    self->_totalTime = self.player.duration;
+    self->_bufferTime = self.player.playableDuration;
+    if (self.playerPlayTimeChanged) self.playerPlayTimeChanged(self, self->_currentTime, self->_totalTime);
+    if (self.playerBufferTimeChanged) self.playerBufferTimeChanged(self, self->_bufferTime);
 }
 
 #pragma mark - Notification
 
 /// 播放器初始化视频文件完成通知
 - (void)videoPrepared:(NSNotification *)notify {
+    // 视频开始播放的时候开启计时器
+    if (!self.timer) {
+        self.timer = [NSTimer scheduledTimerWithTimeInterval:kTimeRefreshInterval target:self selector:@selector(timerUpdate) userInfo:nil repeats:YES];
+        [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+    }
     self.player.shouldMute = self.muted;
     if (self.seekTime) {
         [self seekToTime:self.seekTime completionHandler:nil];
@@ -242,10 +246,6 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
     [self play];
     self.player.shouldMute = self.muted;
     if (self.playerPrepareToPlay) self.playerReadyToPlay(self, self.assetURL);
-    /// 需要延迟改为ok状态，不然显示会有一点问题。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.loadState = ZFPlayerLoadStatePlaythroughOK;
-    });
 }
 
 /// 播放完成通知。视频正常播放完成时触发。
@@ -271,7 +271,10 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
 
 /// 视频的尺寸变化了
 - (void)sizeAvailableChange:(NSNotification *)notify {
-    // 如果想要在宽大于高的时候横屏播放，你可以在这里旋转
+    self->_presentationSize = self.player.naturalSize;
+    if (self.presentationSizeChanged) {
+        self.presentationSizeChanged(self, self->_presentationSize);
+    }
 }
 
 - (void)bufferChange:(NSNotification *)notify {
@@ -318,17 +321,12 @@ static NSString *const kCurrentPlaybackTime = @"currentPlaybackTime";
 - (ZFPlayerView *)view {
     if (!_view) {
         _view = [[ZFPlayerView alloc] init];
-        _view.backgroundColor = [UIColor blackColor];
     }
     return _view;
 }
 
 - (float)rate {
     return _rate == 0 ?1:_rate;
-}
-
-- (CGSize)presentationSize {
-    return self.player.naturalSize;
 }
 
 #pragma mark - setter

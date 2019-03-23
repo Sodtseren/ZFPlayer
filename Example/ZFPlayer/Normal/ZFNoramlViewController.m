@@ -43,13 +43,15 @@ static NSString *kVideoCover = @"https://upload-images.jianshu.io/upload_images/
     [self.view addSubview:self.nextBtn];
     
     ZFAVPlayerManager *playerManager = [[ZFAVPlayerManager alloc] init];
-//    KSMediaPlayerManager *playerManager = [[KSMediaPlayerManager alloc] init];
-//    ZFIJKPlayerManager *playerManager = [[ZFIJKPlayerManager alloc] init];
+    //    KSMediaPlayerManager *playerManager = [[KSMediaPlayerManager alloc] init];
+    //    ZFIJKPlayerManager *playerManager = [[ZFIJKPlayerManager alloc] init];
+    
     /// 播放器相关
     self.player = [ZFPlayerController playerWithPlayerManager:playerManager containerView:self.containerView];
     self.player.controlView = self.controlView;
     /// 设置退到后台继续播放
     self.player.pauseWhenAppResignActive = NO;
+    
     @weakify(self)
     self.player.orientationWillChange = ^(ZFPlayerController * _Nonnull player, BOOL isFullScreen) {
         @strongify(self)
@@ -60,21 +62,16 @@ static NSString *kVideoCover = @"https://upload-images.jianshu.io/upload_images/
     self.player.playerDidToEnd = ^(id  _Nonnull asset) {
         @strongify(self)
         [self.player.currentPlayerManager replay];
-//        [self.player playTheNext];
-//        if (!self.player.isLastAssetURL) {
-//            NSString *title = [NSString stringWithFormat:@"视频标题%zd",self.player.currentPlayIndex];
-//            [self.controlView showTitle:title coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeLandscape];
-//        } else {
-//            [self.player stop];
-//        }
-//        [self.player stop];
+        [self.player playTheNext];
+        if (!self.player.isLastAssetURL) {
+            NSString *title = [NSString stringWithFormat:@"视频标题%zd",self.player.currentPlayIndex];
+            [self.controlView showTitle:title coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeLandscape];
+        } else {
+            [self.player stop];
+        }
     };
     
-    self.player.playerReadyToPlay = ^(id<ZFPlayerMediaPlayback>  _Nonnull asset, NSURL * _Nonnull assetURL) {
-        NSLog(@"======开始播放了");
-    };
-    
-    self.assetURLs = @[[NSURL URLWithString:@"https://www.apple.com/105/media/us/iphone-x/2017/01df5b43-28e4-4848-bf20-490c34a926a7/films/feature/iphone-x-feature-tpl-cc-us-20170912_1280x720h.mp4"],
+    self.assetURLs = @[[NSURL URLWithString:@"http://qq.tqqdm5.cn/7c5e5e2ac03e4c85b712a5ac61c00993/c33daa364a234baca448ee7f32807e58-489db4cdce408a958392a6f7db37d906-sd.mp4"],
                        [NSURL URLWithString:@"https://www.apple.com/105/media/cn/mac/family/2018/46c4b917_abfd_45a3_9b51_4e3054191797/films/bruce/mac-bruce-tpl-cn-2018_1280x720h.mp4"],
                        [NSURL URLWithString:@"https://www.apple.com/105/media/us/mac/family/2018/46c4b917_abfd_45a3_9b51_4e3054191797/films/peter/mac-peter-tpl-cc-us-2018_1280x720h.mp4"],
                        [NSURL URLWithString:@"https://www.apple.com/105/media/us/mac/family/2018/46c4b917_abfd_45a3_9b51_4e3054191797/films/grimes/mac-grimes-tpl-cc-us-2018_1280x720h.mp4"],
@@ -130,26 +127,21 @@ static NSString *kVideoCover = @"https://upload-images.jianshu.io/upload_images/
 }
 
 - (void)changeVideo:(UIButton *)sender {
-    /// 切换playerManager
-//    ZFAVPlayerManager *playerManager = [[ZFAVPlayerManager alloc] init];
-//    self.player.currentPlayerManager = playerManager;
-//    [self.player replaceCurrentPlayerManager:playerManager];
-    
     NSString *URLString = @"https://www.apple.com/105/media/cn/mac/family/2018/46c4b917_abfd_45a3_9b51_4e3054191797/films/bruce/mac-bruce-tpl-cn-2018_1280x720h.mp4";
     self.player.assetURL = [NSURL URLWithString:URLString];
-    [self.controlView showTitle:@"Apple" coverURLString:kVideoCover fullScreenMode:ZFFullScreenModePortrait];
+    [self.controlView showTitle:@"Apple" coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeAutomatic];
 }
 
 - (void)playClick:(UIButton *)sender {
     [self.player playTheIndex:0];
-    [self.controlView showTitle:@"视频标题" coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeLandscape];
+    [self.controlView showTitle:@"视频标题" coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeAutomatic];
 }
 
 - (void)nextClick:(UIButton *)sender {
-    [self.player playTheNext];
     if (!self.player.isLastAssetURL) {
+        [self.player playTheNext];
         NSString *title = [NSString stringWithFormat:@"视频标题%zd",self.player.currentPlayIndex];
-        [self.controlView showTitle:title coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeLandscape];
+        [self.controlView showTitle:title coverURLString:kVideoCover fullScreenMode:ZFFullScreenModeAutomatic];
     } else {
         NSLog(@"最后一个视频了");
     }
@@ -185,11 +177,6 @@ static NSString *kVideoCover = @"https://upload-images.jianshu.io/upload_images/
         return UIInterfaceOrientationMaskLandscape;
     }
     return UIInterfaceOrientationMaskPortrait;
-}
-
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    [self.view endEditing:YES];
-//    self.player.currentPlayerManager.muted = !self.player.currentPlayerManager.muted;
 }
 
 - (ZFPlayerControlView *)controlView {

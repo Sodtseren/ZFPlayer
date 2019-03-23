@@ -26,11 +26,14 @@
 #import <ZFPlayer/ZFPlayer.h>
 #if __has_include(<IJKMediaFramework/IJKMediaFramework.h>)
 
+static float const kTimeRefreshInterval = 0.1;
+
 @interface ZFIJKPlayerManager ()
 @property (nonatomic, strong) IJKFFMoviePlayerController *player;
 @property (nonatomic, strong) IJKFFOptions *options;
 @property (nonatomic, assign) CGFloat lastVolume;
-@property (nonatomic, weak) NSTimer *timer;
+@property (nonatomic, strong) NSTimer *timer;
+@property (nonatomic, assign) BOOL isReadyToPlay;
 
 @end
 
@@ -58,6 +61,7 @@
 @synthesize isPreparedToPlay               = _isPreparedToPlay;
 @synthesize scalingMode                    = _scalingMode;
 @synthesize playerPlayFailed               = _playerPlayFailed;
+@synthesize presentationSizeChanged        = _presentationSizeChanged;
 
 - (void)dealloc {
     [self stop];
@@ -75,6 +79,7 @@
     if (!_assetURL) return;
     _isPreparedToPlay = YES;
     [self initializePlayer];
+    [self play];
     self.loadState = ZFPlayerLoadStatePrepare;
     if (self.playerPrepareToPlay) self.playerPrepareToPlay(self, self.assetURL);
 }
@@ -108,13 +113,13 @@
     self.player = nil;
     _assetURL = nil;
     [self.timer invalidate];
-    
     self.timer = nil;
     _isPlaying = NO;
     _isPreparedToPlay = NO;
     self->_currentTime = 0;
     self->_totalTime = 0;
     self->_bufferTime = 0;
+    self.isReadyToPlay = NO;
 }
 
 - (void)replay {
@@ -148,9 +153,9 @@
     
     [self.view insertSubview:self.player.view atIndex:1];
     self.player.view.frame = self.view.bounds;
+    self.player.view.backgroundColor = [UIColor clearColor];
     self.player.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.scalingMode = _scalingMode;
-    
+    self.scalingMode = self->_scalingMode;
     [self addPlayerNotificationObservers];
 }
 
@@ -175,6 +180,12 @@
                                              selector:@selector(moviePlayBackStateDidChange:)
                                                  name:IJKMPMoviePlayerPlaybackStateDidChangeNotification
                                                object:_player];
+    
+    /// 视频的尺寸变化了
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(sizeAvailableChange:)
+                                                 name:IJKMPMovieNaturalSizeAvailableNotification
+                                               object:self.player];
 }
 
 - (void)removeMovieNotificationObservers {
@@ -190,11 +201,17 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:IJKMPMoviePlayerPlaybackStateDidChangeNotification
                                                   object:_player];
-    
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:IJKMPMovieNaturalSizeAvailableNotification
+                                                  object:_player];
 }
 
-- (void)update {
-    self->_currentTime = self.player.currentPlaybackTime;
+- (void)timerUpdate {
+    if (self.player.currentPlaybackTime > 0 && !self.isReadyToPlay) {
+        self.isReadyToPlay = YES;
+        self.loadState = ZFPlayerLoadStatePlaythroughOK;
+    }
+    self->_currentTime = self.player.currentPlaybackTime > 0 ? self.player.currentPlaybackTime : 0;
     self->_totalTime = self.player.duration;
     self->_bufferTime = self.player.playableDuration;
     if (self.playerPlayTimeChanged) self.playerPlayTimeChanged(self, self.currentTime, self.totalTime);
@@ -235,11 +252,15 @@
 // 准备开始播放了
 - (void)mediaIsPreparedToPlayDidChange:(NSNotification *)notification {
     ZFPlayerLog(@"加载状态变成了已经缓存完成，如果设置了自动播放, 会自动播放");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.loadState = ZFPlayerLoadStatePlaythroughOK;
-    });
-    [self play];
-    self.muted = self.muted;
+    if (self.isPlaying) {
+        [self play];
+        self.muted = self.muted;
+        if (self.seekTime) {
+            [self seekToTime:self.seekTime completionHandler:nil];
+            self.seekTime = 0; // 滞空, 防止下次播放出错
+            [self play];
+        }
+    }
     ZFPlayerLog(@"mediaIsPrepareToPlayDidChange");
     if (self.playerPrepareToPlay) self.playerReadyToPlay(self, self.assetURL);
 }
@@ -277,7 +298,7 @@
     if (self.player.playbackState == IJKMPMoviePlaybackStatePlaying) {
         // 视频开始播放的时候开启计时器
         if (!self.timer) {
-            self.timer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(update) userInfo:nil repeats:YES];
+            self.timer = [NSTimer scheduledTimerWithTimeInterval:kTimeRefreshInterval target:self selector:@selector(timerUpdate) userInfo:nil repeats:YES];
             [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
         }
     }
@@ -292,12 +313,6 @@
             
         case IJKMPMoviePlaybackStatePlaying: {
             ZFPlayerLog(@"播放器的播放状态变了，现在是播放状态 %d: playing", (int)_player.playbackState);
-            self.playState = ZFPlayerPlayStatePlaying;
-            if (self.seekTime) {
-                [self seekToTime:self.seekTime completionHandler:nil];
-                self.seekTime = 0; // 滞空, 防止下次播放出错
-                [self play];
-            }
         }
             break;
             
@@ -327,13 +342,19 @@
     }
 }
 
+/// 视频的尺寸变化了
+- (void)sizeAvailableChange:(NSNotification *)notify {
+    self->_presentationSize = self.player.naturalSize;
+    if (self.presentationSizeChanged) {
+        self.presentationSizeChanged(self, self->_presentationSize);
+    }
+}
 
 #pragma mark - getter
 
 - (UIView *)view {
     if (!_view) {
         _view = [[ZFPlayerView alloc] init];
-        _view.backgroundColor = [UIColor blackColor];
     }
     return _view;
 }
@@ -349,10 +370,6 @@
         [_options setPlayerOptionIntValue:1 forKey:@"enable-accurate-seek"];
     }
     return _options;
-}
-
-- (CGSize)presentationSize {
-    return self.player.naturalSize;
 }
 
 #pragma mark - setter
