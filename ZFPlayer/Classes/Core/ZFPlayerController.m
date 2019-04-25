@@ -139,11 +139,6 @@
     };
     
     self.currentPlayerManager.playerPlayStateChanged = ^(id  _Nonnull asset, ZFPlayerPlaybackState playState) {
-        
-        if (!self) {
-            return;
-        }
-        
         @strongify(self)
         if (self.playerPlayStateChanged) self.playerPlayStateChanged(asset, playState);
         if (playState != ZFPlayerPlayStatePlaying && !self.customAudioSession) {
