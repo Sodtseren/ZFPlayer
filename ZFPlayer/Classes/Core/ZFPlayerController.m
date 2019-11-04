@@ -229,10 +229,10 @@
             }
         };
         _notification.didBecomeActive = ^(ZFPlayerNotification * _Nonnull registrar) {
-            @strongify(self)
-            if (self.isViewControllerDisappear) return;
-            if (self.isPauseByEvent) self.pauseByEvent = NO;
-            if (self.isFullScreen && !self.isLockedScreen) self.orientationObserver.lockedScreen = NO;
+            // @strongify(self)
+            // if (self.isViewControllerDisappear) return;
+            // if (self.isPauseByEvent) self.pauseByEvent = NO;
+            // if (self.isFullScreen && !self.isLockedScreen) self.orientationObserver.lockedScreen = NO;
         };
         _notification.oldDeviceUnavailable = ^(ZFPlayerNotification * _Nonnull registrar) {
             @strongify(self)
